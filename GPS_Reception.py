@@ -1,24 +1,43 @@
 import threading
 import telnetlib
+import time
 import pynmea2
-import folium
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
 
-# Global variables to store the latest GPS data
+# Global variables to store the latest GPS data and traces
 latest_data = {
     "latitude": None,
     "longitude": None,
-    "elevation": None
+    "elevation": None,
+    "speed": None,
 }
 
+# Global variables to manage traces and recording state
+trace_data = []
+is_recording = False
+record_start_time = None
+record_end_time = None
+data_lock = threading.Lock()
+
 # Update the latest GPS data
-def update_latest_data(latitude, longitude, elevation=None):
+def update_latest_data(latitude, longitude, speed=None, elevation=None):
     global latest_data
-    latest_data["latitude"] = latitude
-    latest_data["longitude"] = longitude
-    latest_data["elevation"] = elevation
+    global is_recording
+    global trace_data
+    with data_lock:
+        latest_data["latitude"] = latitude
+        latest_data["longitude"] = longitude
+        if speed is not None:
+            latest_data["speed"] = speed
+        if elevation is not None:
+            latest_data["elevation"] = elevation
+        # print(f"Updated latest_data: {latest_data}")
+        
+        # Add to trace if recording
+        if is_recording:
+            trace_data.append((latitude, longitude))
 
 # Parse NMEA sentence
 def parse_nmea_sentence(sentence):
@@ -28,19 +47,18 @@ def parse_nmea_sentence(sentence):
             latitude = msg.latitude
             longitude = msg.longitude
             elevation = msg.altitude
-            update_latest_data(latitude, longitude, elevation)
-            print(f"Latitude: {latitude}, Longitude: {longitude}, Elevation: {elevation}")
-        elif isinstance(msg, pynmea2.types.talker.RMC):
+            update_latest_data(latitude, longitude, elevation=elevation)
+        if isinstance(msg, pynmea2.types.talker.RMC):
             latitude = msg.latitude
             longitude = msg.longitude
-            update_latest_data(latitude, longitude)
-            print(f"Latitude: {latitude}, Longitude: {longitude}")
+            speed = msg.spd_over_grnd
+            update_latest_data(latitude, longitude, speed=speed)
     except pynmea2.ParseError as e:
         print(f"Parse error: {e}")
 
 # Telnet connection function
 def connect_to_gps():
-    HOST = '172.20.10.4'  # IP address of your GPS device
+    HOST = '192.168.67.34'  # IP address of your GPS device
     PORT = 8080  # Port number for the TCP server on your GPS device
 
     try:
@@ -72,7 +90,44 @@ def index():
 
 @app.route('/gps_data')
 def gps_data():
-    return jsonify(latest_data)
+    with data_lock:
+        # print(f"Sending latest_data: {latest_data}")  # Debug print
+        response = jsonify(latest_data)
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Expires'] = 0
+        response.headers['Pragma'] = 'no-cache'
+        return response
+
+@app.route('/start_recording', methods=['POST'])
+def start_recording():
+    global is_recording
+    global record_start_time
+    global trace_data
+    with data_lock:
+        is_recording = True
+        record_start_time = time.time()
+        trace_data = []
+    return "Recording started", 200
+
+@app.route('/stop_recording', methods=['POST'])
+def stop_recording():
+    global is_recording
+    global record_end_time
+    with data_lock:
+        is_recording = False
+        record_end_time = time.time()
+    return "Recording stopped", 200
+
+@app.route('/get_traces')
+def get_traces():
+    with data_lock:
+        recording_duration = record_end_time - record_start_time
+        print(f"Trace Data: {trace_data}")  # Debug print
+        response = jsonify({
+            "traces": trace_data,
+            "recording_duration": recording_duration
+        })
+        return response
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -8,30 +8,103 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
     <style>
         #map {
-            height: 100vh;
+            height: 70vh;
+        }
+        #controls {
+            margin: 20px;
+        }
+        #timer {
+            font-size: 1.5em;
         }
     </style>
 </head>
 <body>
+    <div id="controls">
+        <button id="startBtn">Start Recording</button>
+        <button id="stopBtn" disabled>Stop Recording</button>
+        <button id="showTracesBtn" disabled>Show Traces</button>
+        <p id="timer">Time: 0s</p>
+        <p id="recordingTime"></p>
+    </div>
     <div id="map"></div>
     <script>
         const map = L.map('map').setView([0, 0], 2);
-
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
         }).addTo(map);
-
         let marker = L.marker([0, 0]).addTo(map);
+        let speedElement = document.createElement('p');
+        document.body.appendChild(speedElement);
+        let tracePolyline = null;
+        let timerInterval = null;
+        let timeElapsed = 0;
 
         async function updateMap() {
             const response = await fetch('/gps_data');
             const data = await response.json();
-
+            console.log("Fetched data: ", data);
             if (data.latitude !== null && data.longitude !== null) {
                 const latLng = [data.latitude, data.longitude];
                 marker.setLatLng(latLng);
+                speedElement.textContent = `Speed: ${data.speed} knots`;
             }
         }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timeElapsed += 1;
+                document.getElementById('timer').textContent = `Time: ${timeElapsed}s`;
+            }, 1000);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+            document.getElementById('timer').textContent = 'Time: 0s';
+            timeElapsed = 0;
+        }
+
+        async function startRecording() {
+            await fetch('/start_recording', { method: 'POST' });
+            console.log("Started recording");
+            startTimer();
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('showTracesBtn').disabled = true;
+            document.getElementById('recordingTime').textContent = ''; // Clear previous recording time
+        }
+
+        async function stopRecording() {
+            await fetch('/stop_recording', { method: 'POST' });
+            console.log("Stopped recording");
+            stopTimer();
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('showTracesBtn').disabled = false;
+        }
+
+        async function showTraces() {
+            const response = await fetch('/get_traces');
+            const data = await response.json();
+            const traces = data.traces;
+            const recordingDuration = data.recording_duration;
+            console.log("Fetched traces: ", traces);
+            console.log("Recording duration: ", recordingDuration);
+            if (tracePolyline) {
+                map.removeLayer(tracePolyline);
+            }
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            tracePolyline = L.polyline(traces, { color: 'blue' }).addTo(map);
+            if (traces.length > 0) {
+                map.fitBounds(tracePolyline.getBounds());
+            }
+            document.getElementById('recordingTime').textContent = `Recorded Time: ${Math.round(recordingDuration)}s`;
+        }
+
+        document.getElementById('startBtn').addEventListener('click', startRecording);
+        document.getElementById('stopBtn').addEventListener('click', stopRecording);
+        document.getElementById('showTracesBtn').addEventListener('click', showTraces);
 
         setInterval(updateMap, 1000);
     </script>
