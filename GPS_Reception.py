@@ -1,6 +1,9 @@
 import threading
 import telnetlib
 import time
+import json
+import csv
+import os
 import pynmea2
 from flask import Flask, render_template, jsonify, request
 
@@ -33,7 +36,6 @@ def update_latest_data(latitude, longitude, speed=None, elevation=None):
             latest_data["speed"] = speed
         if elevation is not None:
             latest_data["elevation"] = elevation
-        # print(f"Updated latest_data: {latest_data}")
         
         # Add to trace if recording
         if is_recording:
@@ -91,7 +93,6 @@ def index():
 @app.route('/gps_data')
 def gps_data():
     with data_lock:
-        # print(f"Sending latest_data: {latest_data}")  # Debug print
         response = jsonify(latest_data)
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Expires'] = 0
@@ -113,16 +114,39 @@ def start_recording():
 def stop_recording():
     global is_recording
     global record_end_time
+    global trace_data
     with data_lock:
         is_recording = False
         record_end_time = time.time()
+        
+        # Save trace data to a file
+        recording_duration = record_end_time - record_start_time
+        trace_file_name_json = f"trace_{int(record_start_time)}.json"
+        trace_file_name_csv = f"trace_{int(record_start_time)}.csv"
+        trace_data_with_time = {
+            "start_time": record_start_time,
+            "end_time": record_end_time,
+            "duration": recording_duration,
+            "traces": trace_data
+        }
+        
+        with open(trace_file_name_json, 'w') as trace_file:
+            json.dump(trace_data_with_time, trace_file)
+        
+        with open(trace_file_name_csv, 'w', newline='') as csv_file:
+            csv_writer = csv.writer(csv_file)
+            csv_writer.writerow(['Latitude', 'Longitude'])
+            for trace in trace_data:
+                csv_writer.writerow(trace)
+        
+        print(f"Trace data saved to {trace_file_name_json} and {trace_file_name_csv}")
+
     return "Recording stopped", 200
 
 @app.route('/get_traces')
 def get_traces():
     with data_lock:
         recording_duration = record_end_time - record_start_time
-        print(f"Trace Data: {trace_data}")  # Debug print
         response = jsonify({
             "traces": trace_data,
             "recording_duration": recording_duration
