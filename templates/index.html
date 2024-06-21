@@ -25,6 +25,8 @@
         <button id="showTracesBtn" disabled>Show Traces</button>
         <p id="timer">Time: 0s</p>
         <p id="recordingTime"></p>
+        <input type="file" id="traceFileInput" accept=".csv">
+        <button id="uploadTraceBtn">Upload Trace</button>
     </div>
     <div id="map"></div>
     <script>
@@ -102,9 +104,38 @@
             document.getElementById('recordingTime').textContent = `Recorded Time: ${Math.round(recordingDuration)}s`;
         }
 
+        async function uploadTrace() {
+            const fileInput = document.getElementById('traceFileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert("Please select a file.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/upload_trace', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            const traces = data.traces;
+
+            if (tracePolyline) {
+                map.removeLayer(tracePolyline);
+            }
+            tracePolyline = L.polyline(traces, { color: 'green' }).addTo(map);
+            if (traces.length > 0) {
+                map.fitBounds(tracePolyline.getBounds());
+            }
+        }
+
         document.getElementById('startBtn').addEventListener('click', startRecording);
         document.getElementById('stopBtn').addEventListener('click', stopRecording);
         document.getElementById('showTracesBtn').addEventListener('click', showTraces);
+        document.getElementById('uploadTraceBtn').addEventListener('click', uploadTrace);
 
         setInterval(updateMap, 1000);
     </script>

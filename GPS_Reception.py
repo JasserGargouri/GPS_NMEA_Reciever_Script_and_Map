@@ -1,10 +1,10 @@
 import threading
+import pynmea2
 import telnetlib
 import time
 import json
 import csv
 import os
-import pynmea2
 from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
@@ -152,6 +152,32 @@ def get_traces():
             "recording_duration": recording_duration
         })
         return response
+
+@app.route('/upload_trace', methods=['POST'])
+def upload_trace():
+    if 'file' not in request.files:
+        return "No file part", 400
+    file = request.files['file']
+    if file.filename == '':
+        return "No selected file", 400
+    if file:
+        # Ensure the uploads directory exists
+        if not os.path.exists('uploads'):
+            os.makedirs('uploads')
+        
+        file_path = os.path.join("uploads", file.filename)
+        file.save(file_path)
+        
+        # Read CSV file
+        traces = []
+        with open(file_path, 'r') as csv_file:
+            csv_reader = csv.reader(csv_file)
+            next(csv_reader)  # Skip header
+            for row in csv_reader:
+                latitude, longitude = map(float, row)
+                traces.append((latitude, longitude))
+        
+        return jsonify(traces=traces), 200
 
 if __name__ == '__main__':
     app.run(debug=True)
