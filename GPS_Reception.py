@@ -4,6 +4,7 @@ import telnetlib
 import time
 import json
 import csv
+import glob
 import os
 from flask import Flask, render_template, jsonify, request
 
@@ -60,7 +61,7 @@ def parse_nmea_sentence(sentence):
 
 # Telnet connection function
 def connect_to_gps():
-    HOST = '192.168.67.34'  # IP address of your GPS device
+    HOST = '192.168.65.34'  # IP address of your GPS device
     PORT = 8080  # Port number for the TCP server on your GPS device
 
     try:
@@ -153,6 +154,23 @@ def get_traces():
         })
         return response
 
+@app.route('/list_traces')
+def list_traces():
+    trace_files = glob.glob("trace_*.json")  # Adjust the pattern if necessary
+    trace_files.sort()  # Optional: Sort the list if needed
+    return jsonify(trace_files)
+
+@app.route('/get_trace/<trace_file>')
+def get_trace(trace_file):
+    with data_lock:
+        trace_file_path = os.path.join(trace_file)
+        if os.path.exists(trace_file_path):
+            with open(trace_file_path, 'r') as file:
+                trace_data = json.load(file)
+            return jsonify(trace_data)
+        else:
+            return "Trace file not found", 404
+
 @app.route('/upload_trace', methods=['POST'])
 def upload_trace():
     if 'file' not in request.files:
@@ -180,4 +198,4 @@ def upload_trace():
         return jsonify(traces=traces), 200
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0')

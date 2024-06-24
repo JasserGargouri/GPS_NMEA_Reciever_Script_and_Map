@@ -16,6 +16,10 @@
         #timer {
             font-size: 1.5em;
         }
+        #traceList {
+            margin-top: 20px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -23,10 +27,12 @@
         <button id="startBtn">Start Recording</button>
         <button id="stopBtn" disabled>Stop Recording</button>
         <button id="showTracesBtn" disabled>Show Traces</button>
+        <button id="browseTracesBtn">Browse Traces</button>
         <p id="timer">Time: 0s</p>
         <p id="recordingTime"></p>
         <input type="file" id="traceFileInput" accept=".csv">
         <button id="uploadTraceBtn">Upload Trace</button>
+        <div id="traceList"></div>
     </div>
     <div id="map"></div>
     <script>
@@ -132,10 +138,41 @@
             }
         }
 
+        async function browseTraces() {
+            const response = await fetch('/list_traces');
+            const traceFiles = await response.json();
+            console.log("Fetched trace files: ", traceFiles);
+            const traceListDiv = document.getElementById('traceList');
+            traceListDiv.innerHTML = ''; // Clear previous list
+            traceFiles.forEach(traceFile => {
+                const traceItem = document.createElement('div');
+                traceItem.textContent = traceFile;
+                traceItem.style.cursor = 'pointer';
+                traceItem.onclick = () => loadTrace(traceFile);
+                traceListDiv.appendChild(traceItem);
+            });
+            traceListDiv.style.display = 'block';
+        }
+
+        async function loadTrace(traceFile) {
+            const response = await fetch(`/get_trace/${traceFile}`);
+            const traceData = await response.json();
+            const traces = traceData.traces;
+            console.log("Loaded trace: ", traces);
+            if (tracePolyline) {
+                map.removeLayer(tracePolyline);
+            }
+            tracePolyline = L.polyline(traces, { color: 'red' }).addTo(map);
+            if (traces.length > 0) {
+                map.fitBounds(tracePolyline.getBounds());
+            }
+        }
+
         document.getElementById('startBtn').addEventListener('click', startRecording);
         document.getElementById('stopBtn').addEventListener('click', stopRecording);
         document.getElementById('showTracesBtn').addEventListener('click', showTraces);
         document.getElementById('uploadTraceBtn').addEventListener('click', uploadTrace);
+        document.getElementById('browseTracesBtn').addEventListener('click', browseTraces);
 
         setInterval(updateMap, 1000);
     </script>
