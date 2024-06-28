@@ -32,6 +32,8 @@
         <input type="file" id="traceFileInput" accept=".csv">
         <button id="uploadTraceBtn">Upload Trace</button>
         <div id="traceList"></div>
+        <p id="traceDuration">Duration: N/A</p>
+        <p id="traceDistance">Distance: N/A</p>
     </div>
     <div id="map"></div>
     <script>
@@ -136,7 +138,13 @@
             const response = await fetch(`/get_trace/${traceFile}`);
             const traceData = await response.json();
             const traces = traceData.traces;
+            const duration = traceData.duration;
+            const distance = traceData.distance;
             console.log("Loaded trace: ", traces);
+
+            document.getElementById('traceDuration').textContent = `Duration: ${duration.toFixed(2)} seconds`;
+            document.getElementById('traceDistance').textContent = `Distance: ${(distance / 1000).toFixed(2)} kilometers`;
+
             if (tracePolyline) {
                 map.removeLayer(tracePolyline);
             }

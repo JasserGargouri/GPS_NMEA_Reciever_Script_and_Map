@@ -8,6 +8,7 @@ import glob
 import os
 import pytz
 from flask import Flask, render_template, jsonify, request
+from math import radians, cos, sin, sqrt, atan2
 
 app = Flask(__name__)
 
@@ -25,6 +26,16 @@ is_recording = False
 record_start_time = None
 record_end_time = None
 data_lock = threading.Lock()
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371000  # Radius of the Earth in meters
+    phi1 = radians(lat1)
+    phi2 = radians(lat2)
+    delta_phi = radians(lat2 - lat1)
+    delta_lambda = radians(lon2 - lon1)
+    a = sin(delta_phi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(delta_lambda / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return R * c
 
 # Update the latest GPS data
 def update_latest_data(latitude, longitude, speed=None, elevation=None):
@@ -153,27 +164,39 @@ def list_traces():
 def get_trace(trace_file):
     trace_path = os.path.join('uploads', trace_file)
     traces = []
+    total_distance = 0.0
+    duration = 0.0
+    start_time = None
+    end_time = None
 
     try:
         with open(trace_path, 'r') as csvfile:
             reader = csv.reader(csvfile)
-            next(reader)  # Skip the header row
+            header = next(reader)  # Read the header row
+            has_timestamp = 'Timestamp' in header
+            previous_point = None
             for row in reader:
-                if len(row) == 2:
-                    latitude, longitude = map(float, row)
-                    traces.append([latitude, longitude])
-                elif len(row) >= 5:
-                    _, latitude, longitude, _, _ = row
+                if has_timestamp:
+                    timestamp, latitude, longitude, speed, elevation = row
+                    timestamp = float(timestamp)
                     latitude, longitude = float(latitude), float(longitude)
-                    traces.append([latitude, longitude])
+                    if not start_time:
+                        start_time = timestamp
+                    end_time = timestamp
                 else:
-                    continue
+                    latitude, longitude = float(row[0]), float(row[1])
+                traces.append([latitude, longitude])
+                if previous_point:
+                    total_distance += haversine(previous_point[0], previous_point[1], latitude, longitude)
+                previous_point = (latitude, longitude)
+
+        if has_timestamp:
+            duration = end_time - start_time if start_time and end_time else 0.0
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    return jsonify({"traces": traces})
-
-
+    return jsonify({"traces": traces, "duration": duration, "distance": total_distance})
 
 @app.route('/upload_trace', methods=['POST'])
 def upload_trace():
@@ -196,8 +219,8 @@ def upload_trace():
             csv_reader = csv.reader(csv_file)
             next(csv_reader)  # Skip header
             for row in csv_reader:
-                timestamp, latitude, longitude, speed, elevation = row
-                traces.append((float(latitude), float(longitude)))
+                latitude, longitude = float(row[0]), float(row[1])
+                traces.append((latitude, longitude))
         
         return jsonify(traces=traces), 200
 
