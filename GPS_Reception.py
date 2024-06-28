@@ -1,11 +1,12 @@
+from datetime import datetime
 import threading
 import pynmea2
 import telnetlib
 import time
-import json
 import csv
 import glob
 import os
+import pytz
 from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
@@ -40,7 +41,7 @@ def update_latest_data(latitude, longitude, speed=None, elevation=None):
         
         # Add to trace if recording
         if is_recording:
-            trace_data.append((latitude, longitude))
+            trace_data.append((time.time(), latitude, longitude, speed, elevation))
 
 # Parse NMEA sentence
 def parse_nmea_sentence(sentence):
@@ -122,8 +123,9 @@ def stop_recording():
         
         # Save trace data to a file
         recording_duration = record_end_time - record_start_time
-        trace_file_name_json = f"trace_{int(record_start_time)}.json"
-        trace_file_name_csv = f"trace_{int(record_start_time)}.csv"
+        local_timezone = pytz.timezone('Europe/Paris')  # Set your desired timezone here
+        readable_start_time = datetime.fromtimestamp(record_start_time, local_timezone).strftime('%Y-%m-%d_%H-%M-%S')
+        trace_file_name_csv = f"uploads/trace_{readable_start_time}.csv"
         trace_data_with_time = {
             "start_time": record_start_time,
             "end_time": record_end_time,
@@ -131,45 +133,47 @@ def stop_recording():
             "traces": trace_data
         }
         
-        with open(trace_file_name_json, 'w') as trace_file:
-            json.dump(trace_data_with_time, trace_file)
-        
         with open(trace_file_name_csv, 'w', newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
-            csv_writer.writerow(['Latitude', 'Longitude'])
+            csv_writer.writerow(['Timestamp', 'Latitude', 'Longitude', 'Speed', 'Elevation'])
             for trace in trace_data:
                 csv_writer.writerow(trace)
         
-        print(f"Trace data saved to {trace_file_name_json} and {trace_file_name_csv}")
+        print(f"Trace data saved to {trace_file_name_csv}")
 
     return "Recording stopped", 200
 
-@app.route('/get_traces')
-def get_traces():
-    with data_lock:
-        recording_duration = record_end_time - record_start_time
-        response = jsonify({
-            "traces": trace_data,
-            "recording_duration": recording_duration
-        })
-        return response
-
 @app.route('/list_traces')
 def list_traces():
-    trace_files = glob.glob("trace_*.json")  # Adjust the pattern if necessary
+    trace_files = glob.glob("uploads/trace_*.csv")  # List all CSV files in uploads folder
     trace_files.sort()  # Optional: Sort the list if needed
     return jsonify(trace_files)
-
+    
 @app.route('/get_trace/<trace_file>')
 def get_trace(trace_file):
-    with data_lock:
-        trace_file_path = os.path.join(trace_file)
-        if os.path.exists(trace_file_path):
-            with open(trace_file_path, 'r') as file:
-                trace_data = json.load(file)
-            return jsonify(trace_data)
-        else:
-            return "Trace file not found", 404
+    trace_path = os.path.join('uploads', trace_file)
+    traces = []
+
+    try:
+        with open(trace_path, 'r') as csvfile:
+            reader = csv.reader(csvfile)
+            next(reader)  # Skip the header row
+            for row in reader:
+                if len(row) == 2:
+                    latitude, longitude = map(float, row)
+                    traces.append([latitude, longitude])
+                elif len(row) >= 5:
+                    _, latitude, longitude, _, _ = row
+                    latitude, longitude = float(latitude), float(longitude)
+                    traces.append([latitude, longitude])
+                else:
+                    continue
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"traces": traces})
+
+
 
 @app.route('/upload_trace', methods=['POST'])
 def upload_trace():
@@ -192,8 +196,8 @@ def upload_trace():
             csv_reader = csv.reader(csv_file)
             next(csv_reader)  # Skip header
             for row in csv_reader:
-                latitude, longitude = map(float, row)
-                traces.append((latitude, longitude))
+                timestamp, latitude, longitude, speed, elevation = row
+                traces.append((float(latitude), float(longitude)))
         
         return jsonify(traces=traces), 200
 
