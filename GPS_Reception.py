@@ -73,7 +73,7 @@ def parse_nmea_sentence(sentence):
 
 # Telnet connection function
 def connect_to_gps():
-    HOST = '192.168.65.34'  # IP address of your GPS device
+    HOST = '192.168.65.102'  # IP address of your GPS device
     PORT = 8080  # Port number for the TCP server on your GPS device
 
     try:

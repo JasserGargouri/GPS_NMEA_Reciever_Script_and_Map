@@ -7,11 +7,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
     <style>
-        #map {
-            height: 70vh;
+        body {
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+            margin: 0;
         }
         #controls {
-            margin: 20px;
+            flex: 1;
+            padding: 20px;
+        }
+        #map {
+            flex: 2;
+            height: 100%;
         }
         #timer {
             font-size: 1.5em;
