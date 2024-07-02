@@ -50,8 +50,8 @@
             maxZoom: 18,
         }).addTo(map);
         let marker = L.marker([0, 0]).addTo(map);
-        let speedElement = document.createElement('p');
-        document.body.appendChild(speedElement);
+        // let speedElement = document.createElement('p');
+        // document.body.appendChild(speedElement);
         let tracePolyline = null;
         let timerInterval = null;
         let timeElapsed = 0;
@@ -63,7 +63,7 @@
             if (data.latitude !== null && data.longitude !== null) {
                 const latLng = [data.latitude, data.longitude];
                 marker.setLatLng(latLng);
-                speedElement.textContent = `Speed: ${data.speed} knots`;
+                // speedElement.textContent = `Speed: ${data.speed} knots`;
             }
         }
 
