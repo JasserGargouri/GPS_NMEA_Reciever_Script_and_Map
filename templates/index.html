@@ -18,7 +18,7 @@
             padding: 20px;
         }
         #map {
-            flex: 2;
+            flex: 4;
             height: 100%;
         }
         #timer {
@@ -47,7 +47,7 @@
     <script>
         const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
+            maxZoom: 19,
         }).addTo(map);
         let marker = L.marker([0, 0]).addTo(map);
         // let speedElement = document.createElement('p');
