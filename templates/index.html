@@ -35,6 +35,7 @@
         <button id="startBtn">Start Recording</button>
         <button id="stopBtn" disabled>Stop Recording</button>
         <button id="browseTracesBtn">Browse Traces</button>
+        <button id="resetButton">Reset Lines</button>
         <p id="timer">Time: 0s</p>
         <p id="recordingTime"></p>
         <input type="file" id="traceFileInput" accept=".csv">
@@ -56,15 +57,27 @@
         let timerInterval = null;
         let timeElapsed = 0;
 
+        let device1Path = [];
+
+        let device1Polyline = L.polyline([], {color: 'blue'}).addTo(map);
+
         async function updateMap() {
             const response = await fetch('/gps_data');
             const data = await response.json();
             console.log("Fetched data: ", data);
             if (data.latitude !== null && data.longitude !== null) {
-                const latLng = [data.latitude, data.longitude];
-                marker.setLatLng(latLng);
+                const latLng1 = [data.latitude, data.longitude];
+                marker.setLatLng(latLng1);
+                device1Path.push(latLng1);
+                device1Polyline.setLatLngs(device1Path);
                 // speedElement.textContent = `Speed: ${data.speed} knots`;
             }
+            document.getElementById('resetButton').addEventListener('click', () => {
+            device1Path = [];
+            device2Path = [];
+            device1Polyline.setLatLngs([]);
+            device2Polyline.setLatLngs([]);
+        });
         }
 
         function startTimer() {
