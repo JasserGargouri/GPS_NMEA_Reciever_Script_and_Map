@@ -4,43 +4,101 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPS NMEA Tracker</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
     <style>
         body {
             display: flex;
-            flex-direction: row;
-            height: 100vh;
             margin: 0;
+            height: 100vh;
+            font-family: Arial, sans-serif;
         }
         #controls {
             flex: 1;
             padding: 20px;
+            background-color: #f0f0f0;
+            overflow-y: auto; /* Enable scrolling if content exceeds height */
         }
-        #map {
-            flex: 4;
-            height: 100%;
+        h2 {
+            font-size: 1.5em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .gps-status {
+            color: red;
+            margin-left: 10px;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+        input[type="text"], input[type="number"] {
+            width: calc(100% - 22px); /* Adjust width to fit container */
+            padding: 5px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 1em;
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        button:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
+        button:hover {
+            background-color: #45a049;
         }
         #timer {
             font-size: 1.5em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        #recordingTime {
+            margin-bottom: 10px;
+            color: #333;
         }
         #traceList {
-            margin-top: 20px;
+            margin-top: 10px;
             display: none;
+        }
+        .trace-item {
+            padding: 5px 10px;
+            margin-top: 5px;
+            cursor: pointer;
+            background-color: #e0e0e0;
+            border-radius: 3px;
+        }
+        .trace-item:hover {
+            background-color: #d0d0d0;
+        }
+        .trace-info {
+            margin-top: 10px;
+            color: #333;
         }
     </style>
 </head>
 <body>
     <div id="controls">
-        <h2>GPS 1</h2>
-        <h2>GPS 1 <span id="gps1Status" style="color: red">&#11044;</span></h2>
+        <h2>GPS 1 <span id="gps1Status" class="gps-status">&#11044;</span></h2>
         <label for="addressInput1">Address:</label>
         <input type="text" id="addressInput1" placeholder="Enter GPS Address">
         <label for="portInput1">Port:</label>
         <input type="number" id="portInput1" placeholder="Enter GPS Port">
         <button id="connectBtn1">Connect to GPS 1</button>
-        <h2>GPS 2</h2>
-        <h2>GPS 2 <span id="gps2Status" style="color: red">&#11044;</span></h2>
+        <h2>GPS 2 <span id="gps2Status" class="gps-status">&#11044;</span></h2>
         <label for="addressInput2">Address:</label>
         <input type="text" id="addressInput2" placeholder="Enter GPS Address">
         <label for="portInput2">Port:</label>
@@ -56,10 +114,12 @@
         <input type="file" id="traceFileInput" accept=".csv">
         <button id="uploadTraceBtn">Upload Trace</button>
         <div id="traceList"></div>
-        <p id="traceDuration">Duration: N/A</p>
-        <p id="traceDistance">Distance: N/A</p>
+        <p class="trace-info" id="traceDuration">Duration: N/A</p>
+        <p class="trace-info" id="traceDistance">Distance: N/A</p>
+
     </div>
-    <div id="map"></div>
+    <div id="map" style="flex: 4; height: 100%;"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <script>
         const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -71,59 +131,55 @@
         let tracePolyline2 = L.polyline([], {color: 'red'}).addTo(map);
         let timerInterval = null;
         let timeElapsed = 0;
-
         let device1Path = [];
         let device2Path = [];
         let mapUpdateEnabled = true;  // Flag to control real-time map updates
 
         async function updateMap() {
-
             if (!mapUpdateEnabled) {
-            return;  // Exit if map updates are disabled
+                return;  // Exit if map updates are disabled
+            }
+            const response = await fetch('/gps_data');
+            const data = await response.json();
+            console.log("Fetched data: ", data);
+
+            if (data.gps1.latitude !== null && data.gps1.longitude !== null) {
+                const latLng1 = [data.gps1.latitude, data.gps1.longitude];
+                marker1.setLatLng(latLng1);
+                device1Path.push(latLng1);
+                tracePolyline1.setLatLngs(device1Path);
+                document.getElementById('gps1Status').style.color = 'green'; // Connected indicator
+            } else {
+                marker1.setLatLng([0, 0]);
+                device1Path = [];
+                tracePolyline1.setLatLngs(device1Path);
+                document.getElementById('gps1Status').style.color = 'red'; // Disconnected indicator
+            }
+
+            if (data.gps2.latitude !== null && data.gps2.longitude !== null) {
+                const latLng2 = [data.gps2.latitude, data.gps2.longitude];
+                marker2.setLatLng(latLng2);
+                device2Path.push(latLng2);
+                tracePolyline2.setLatLngs(device2Path);
+                document.getElementById('gps2Status').style.color = 'green'; // Connected indicator
+            } else {
+                marker2.setLatLng([0, 0]);
+                device2Path = [];
+                tracePolyline2.setLatLngs(device2Path);
+                document.getElementById('gps2Status').style.color = 'red'; // Disconnected indicator
+            }
+
+            if (!data.gps1.latitude && !data.gps2.latitude) {
+                stopTimer();
+            }
+
+            document.getElementById('resetButton').addEventListener('click', () => {
+                device1Path = [];
+                device2Path = [];
+                tracePolyline1.setLatLngs([]);
+                tracePolyline2.setLatLngs([]);
+            });
         }
-
-        const response = await fetch('/gps_data');
-        const data = await response.json();
-        console.log("Fetched data: ", data);
-
-        if (data.gps1.latitude !== null && data.gps1.longitude !== null) {
-            const latLng1 = [data.gps1.latitude, data.gps1.longitude];
-            marker1.setLatLng(latLng1);
-            device1Path.push(latLng1);
-            tracePolyline1.setLatLngs(device1Path);
-            document.getElementById('gps1Status').style.color = 'green'; // Connected indicator
-        } else {
-            marker1.setLatLng([0, 0]); // Set marker position to a default (e.g., center of the map)
-            device1Path = [];
-            tracePolyline1.setLatLngs(device1Path);
-            document.getElementById('gps1Status').style.color = 'red'; // Disconnected indicator
-        }
-
-        if (data.gps2.latitude !== null && data.gps2.longitude !== null) {
-            const latLng2 = [data.gps2.latitude, data.gps2.longitude];
-            marker2.setLatLng(latLng2);
-            device2Path.push(latLng2);
-            tracePolyline2.setLatLngs(device2Path);
-            document.getElementById('gps2Status').style.color = 'green'; // Connected indicator
-        } else {
-            marker2.setLatLng([0, 0]); // Set marker position to a default (e.g., center of the map)
-            device2Path = [];
-            tracePolyline2.setLatLngs(device2Path);
-            document.getElementById('gps2Status').style.color = 'red'; // Disconnected indicator
-        }
-
-        if (!data.gps1.latitude && !data.gps2.latitude) {
-            stopTimer(); // Stop timer if all GPS connections are stopped
-        }
-
-        document.getElementById('resetButton').addEventListener('click', () => {
-            device1Path = [];
-            device2Path = [];
-            tracePolyline1.setLatLngs([]);
-            tracePolyline2.setLatLngs([]);
-        });
-}
-
 
         function startTimer() {
             timerInterval = setInterval(() => {
@@ -144,7 +200,7 @@
             startTimer();
             document.getElementById('startBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
-            document.getElementById('recordingTime').textContent = ''; // Clear previous recording time
+            document.getElementById('recordingTime').textContent = '';
         }
 
         async function stopRecording() {
@@ -156,22 +212,18 @@
         }
 
         async function uploadTrace() {
-            
             const fileInput = document.getElementById('traceFileInput');
             const file = fileInput.files[0];
             if (!file) {
                 alert("Please select a file.");
                 return;
             }
-
             const formData = new FormData();
             formData.append('file', file);
-
             const response = await fetch('/upload_trace', {
                 method: 'POST',
                 body: formData
             });
-
             const data = await response.json();
             const traces1 = data.traces1;
             const traces2 = data.traces2;
@@ -182,8 +234,8 @@
             if (tracePolyline2) {
                 map.removeLayer(tracePolyline2);
             }
-            tracePolyline11 = L.polyline(traces1, { color: 'blue' }).addTo(map);
-            tracePolyline22 = L.polyline(traces2, { color: 'red' }).addTo(map);
+            tracePolyline1 = L.polyline(traces1, { color: 'blue' }).addTo(map);
+            tracePolyline2 = L.polyline(traces2, { color: 'red' }).addTo(map);
             if (traces1.length > 0 || traces2.length > 0) {
                 map.fitBounds([...tracePolyline1.getBounds().toArray(), ...tracePolyline2.getBounds().toArray()]);
             }
@@ -192,15 +244,14 @@
         async function browseTraces() {
             const response = await fetch('/list_traces');
             const traceFiles = await response.json();
-            console.log("Fetched trace files: ", traceFiles);
             const traceListDiv = document.getElementById('traceList');
-            traceListDiv.innerHTML = ''; // Clear previous list
+            traceListDiv.innerHTML = '';
             traceFiles.forEach(traceFile => {
-                const traceFileName = traceFile.split('/').pop(); // Get only the file name
+                const traceFileName = traceFile.split('/').pop();
                 const traceItem = document.createElement('div');
                 traceItem.textContent = traceFileName;
-                traceItem.style.cursor = 'pointer';
-                traceItem.onclick = () => loadTrace(traceFileName); // Use only the file name
+                traceItem.className = 'trace-item';
+                traceItem.onclick = () => loadTrace(traceFileName);
                 traceListDiv.appendChild(traceItem);
             });
             traceListDiv.style.display = 'block';
@@ -210,25 +261,33 @@
             stopAllGPS();
             const response = await fetch(`/get_trace/${traceFile}`);
             const traceData = await response.json();
+            console.log("Trace Data:", traceData); // Log the entire trace data object
+
             const traces1 = traceData.traces1;
             const traces2 = traceData.traces2;
             const duration = traceData.duration;
             const distance = traceData.distance;
-            console.log("Loaded trace: ", traces1, traces2);
+            console.log("Duration:", duration); // Log the duration value
+            console.log("Distance:", distance); // Log the distance value
 
-            // Update tracePolyline1 and tracePolyline2 with new coordinates
+            // Update UI elements
+            document.getElementById('traceDuration').textContent = `Duration: ${duration.toFixed(2)} seconds`;
+            document.getElementById('traceDistance').textContent = `Distance: ${(distance / 1000).toFixed(2)} kilometers`;
+
+            // Update map with traces
             tracePolyline1.setLatLngs(traces1);
             tracePolyline2.setLatLngs(traces2);
 
-            // Fit map bounds to the new trace polylines
-            if (traces1.length > 0 || traces2.length > 0) {
-                map.fitBounds([...tracePolyline1.getBounds().toArray(), ...tracePolyline2.getBounds().toArray()]);
-            }
+            // Fit map bounds to both traces
+            const bounds1 = tracePolyline1.getBounds();
+            const bounds2 = tracePolyline2.getBounds();
+            const combinedBounds = bounds1.extend(bounds2).getCenter(); // Get center of bounds
 
-            // Update duration and distance display
-            document.getElementById('traceDuration').textContent = `Duration: ${duration.toFixed(2)} seconds`;
-            document.getElementById('traceDistance').textContent = `Distance: ${(distance / 1000).toFixed(2)} kilometers`;
+            if (combinedBounds.length > 0) {
+                map.fitBounds(combinedBounds);
+            }
         }
+
 
 
         async function connectToGPS(deviceNum) {
@@ -239,7 +298,6 @@
                 alert('Please enter both address and port');
                 return;
             }
-
             const response = await fetch('/connect_gps', {
                 method: 'POST',
                 headers: {
@@ -247,10 +305,9 @@
                 },
                 body: JSON.stringify({ address, port, deviceNum }),
             });
-
             if (response.ok) {
                 console.log(`Connected to GPS ${deviceNum}`);
-                document.getElementById(`gps${deviceNum}Status`).style.color = 'green'; // Change indicator to green
+                document.getElementById(`gps${deviceNum}Status`).style.color = 'green';
                 document.getElementById('startBtn').disabled = false;
             } else {
                 console.error(`Failed to connect to GPS ${deviceNum}`);
@@ -262,25 +319,21 @@
             const response = await fetch('/stop_all_gps', { method: 'POST' });
             if (response.ok) {
                 console.log("Stopped all GPS connections and updates");
-                document.getElementById('startBtn').disabled = true; // Disable start recording button
-                document.getElementById('stopBtn').disabled = true; // Disable stop recording button
-                document.getElementById('gps1Status').style.color = 'red'; // Reset GPS 1 indicator to red
-                document.getElementById('gps2Status').style.color = 'red'; // Reset GPS 2 indicator to red
-
-                // Clear markers and paths
-                marker1.setLatLng([0, 0]); // Set marker position to a default (e.g., center of the map)
-                marker2.setLatLng([0, 0]); // Set marker position to a default (e.g., center of the map)
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = true;
+                document.getElementById('gps1Status').style.color = 'red';
+                document.getElementById('gps2Status').style.color = 'red';
+                marker1.setLatLng([0, 0]);
+                marker2.setLatLng([0, 0]);
                 device1Path = [];
                 device2Path = [];
                 tracePolyline1.setLatLngs([]);
                 tracePolyline2.setLatLngs([]);
-
-                stopTimer(); // Stop timer if running
+                stopTimer();
             } else {
                 console.error("Failed to stop all GPS connections and updates");
             }
         }
-
 
         document.getElementById('connectBtn1').addEventListener('click', () => connectToGPS(1));
         document.getElementById('connectBtn2').addEventListener('click', () => connectToGPS(2));
@@ -288,7 +341,6 @@
         document.getElementById('stopBtn').addEventListener('click', stopRecording);
         document.getElementById('uploadTraceBtn').addEventListener('click', uploadTrace);
         document.getElementById('browseTracesBtn').addEventListener('click', browseTraces);
-
         setInterval(updateMap, 1000);
     </script>
 </body>
