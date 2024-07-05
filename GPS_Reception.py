@@ -26,6 +26,8 @@ is_recording = False
 record_start_time = None
 record_end_time = None
 data_lock = threading.Lock()
+gps_thread = None
+gps_stop_event = threading.Event()
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000  # Radius of the Earth in meters
@@ -72,17 +74,14 @@ def parse_nmea_sentence(sentence):
         print(f"Parse error: {e}")
 
 # Telnet connection function
-def connect_to_gps():
-    HOST = '192.168.65.102'  # IP address of your GPS device
-    PORT = 8080  # Port number for the TCP server on your GPS device
-
+def connect_to_gps(host, port):
     try:
         # Connect to the GPS device
-        tn = telnetlib.Telnet(HOST, PORT)
+        tn = telnetlib.Telnet(host, port)
         print("Connected to GPS device")
 
         # Receive data from the GPS device
-        while True:
+        while not gps_stop_event.is_set():
             data = tn.read_until(b"\n")  # Read until newline character
             data_str = data.decode('utf-8').strip()
             parse_nmea_sentence(data_str)  # Parse the received NMEA sentence
@@ -94,10 +93,6 @@ def connect_to_gps():
     finally:
         # Close the connection
         tn.close()
-
-# Start the GPS connection in a separate thread
-gps_thread = threading.Thread(target=connect_to_gps)
-gps_thread.start()
 
 @app.route('/')
 def index():
@@ -111,6 +106,22 @@ def gps_data():
         response.headers['Expires'] = 0
         response.headers['Pragma'] = 'no-cache'
         return response
+
+@app.route('/connect_gps', methods=['POST'])
+def connect_gps():
+    global gps_thread
+    if gps_thread and gps_thread.is_alive():
+        return "Already connected", 400
+    
+    data = request.json
+    host = data['address']
+    port = int(data['port'])
+
+    gps_stop_event.clear()
+    gps_thread = threading.Thread(target=connect_to_gps, args=(host, port))
+    gps_thread.start()
+
+    return "Connecting to GPS", 200
 
 @app.route('/start_recording', methods=['POST'])
 def start_recording():
