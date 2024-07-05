@@ -1,36 +1,35 @@
-from datetime import datetime
 import threading
-import pynmea2
-import telnetlib
 import time
+import telnetlib
 import csv
 import glob
 import os
+from datetime import datetime
 import pytz
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, request, jsonify, render_template
+import pynmea2
 from math import radians, cos, sin, sqrt, atan2
+import threading
 
 app = Flask(__name__)
+data_lock = threading.Lock()
 
-# Global variables to store the latest GPS data and traces
+# Global variables for GPS data
 latest_data = {
-    "latitude": None,
-    "longitude": None,
-    "elevation": None,
-    "speed": None,
+    "gps1": {"latitude": None, "longitude": None, "speed": None, "elevation": None},
+    "gps2": {"latitude": None, "longitude": None, "speed": None, "elevation": None}
 }
-
-# Global variables to manage traces and recording state
-trace_data = []
 is_recording = False
 record_start_time = None
 record_end_time = None
-data_lock = threading.Lock()
-gps_thread = None
-gps_stop_event = threading.Event()
+trace_data = []
 
+gps_threads = [None, None]
+gps_stop_events = [threading.Event(), threading.Event()]
+
+# Haversine formula to calculate the distance between two points
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000  # Radius of the Earth in meters
+    R = 6371000  # radius of Earth in meters
     phi1 = radians(lat1)
     phi2 = radians(lat2)
     delta_phi = radians(lat2 - lat1)
@@ -40,56 +39,56 @@ def haversine(lat1, lon1, lat2, lon2):
     return R * c
 
 # Update the latest GPS data
-def update_latest_data(latitude, longitude, speed=None, elevation=None):
+def update_latest_data(device_num, latitude, longitude, speed=None, elevation=None):
     global latest_data
     global is_recording
     global trace_data
     with data_lock:
-        latest_data["latitude"] = latitude
-        latest_data["longitude"] = longitude
+        latest_data[f"gps{device_num}"]["latitude"] = latitude
+        latest_data[f"gps{device_num}"]["longitude"] = longitude
         if speed is not None:
-            latest_data["speed"] = speed
+            latest_data[f"gps{device_num}"]["speed"] = speed
         if elevation is not None:
-            latest_data["elevation"] = elevation
-        
+            latest_data[f"gps{device_num}"]["elevation"] = elevation
+
         # Add to trace if recording
         if is_recording:
-            trace_data.append((time.time(), latitude, longitude, speed, elevation))
+            trace_data.append((time.time(), device_num, latitude, longitude, speed, elevation))
 
 # Parse NMEA sentence
-def parse_nmea_sentence(sentence):
+def parse_nmea_sentence(device_num, sentence):
     try:
         msg = pynmea2.parse(sentence.strip())
         if isinstance(msg, pynmea2.types.talker.GGA):
             latitude = msg.latitude
             longitude = msg.longitude
             elevation = msg.altitude
-            update_latest_data(latitude, longitude, elevation=elevation)
+            update_latest_data(device_num, latitude, longitude, elevation=elevation)
         if isinstance(msg, pynmea2.types.talker.RMC):
             latitude = msg.latitude
             longitude = msg.longitude
             speed = msg.spd_over_grnd
-            update_latest_data(latitude, longitude, speed=speed)
+            update_latest_data(device_num, latitude, longitude, speed=speed)
     except pynmea2.ParseError as e:
         print(f"Parse error: {e}")
 
 # Telnet connection function
-def connect_to_gps(host, port):
+def connect_to_gps(host, port, device_num):
     try:
         # Connect to the GPS device
         tn = telnetlib.Telnet(host, port)
-        print("Connected to GPS device")
+        print(f"Connected to GPS device {device_num}")
 
         # Receive data from the GPS device
-        while not gps_stop_event.is_set():
+        while not gps_stop_events[device_num - 1].is_set():
             data = tn.read_until(b"\n")  # Read until newline character
             data_str = data.decode('utf-8').strip()
-            parse_nmea_sentence(data_str)  # Parse the received NMEA sentence
+            parse_nmea_sentence(device_num, data_str)  # Parse the received NMEA sentence
 
     except ConnectionRefusedError:
-        print("Connection refused. Make sure the GPS device is running and reachable.")
+        print(f"Connection refused for GPS device {device_num}. Make sure the GPS device is running and reachable.")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred with GPS device {device_num}: {e}")
     finally:
         # Close the connection
         tn.close()
@@ -109,19 +108,20 @@ def gps_data():
 
 @app.route('/connect_gps', methods=['POST'])
 def connect_gps():
-    global gps_thread
-    if gps_thread and gps_thread.is_alive():
-        return "Already connected", 400
-    
+    global gps_threads
     data = request.json
     host = data['address']
     port = int(data['port'])
+    device_num = int(data['deviceNum'])
 
-    gps_stop_event.clear()
-    gps_thread = threading.Thread(target=connect_to_gps, args=(host, port))
-    gps_thread.start()
+    if gps_threads[device_num - 1] and gps_threads[device_num - 1].is_alive():
+        return f"GPS {device_num} already connected", 400
 
-    return "Connecting to GPS", 200
+    gps_stop_events[device_num - 1].clear()
+    gps_threads[device_num - 1] = threading.Thread(target=connect_to_gps, args=(host, port, device_num))
+    gps_threads[device_num - 1].start()
+
+    return f"Connecting to GPS {device_num}", 200
 
 @app.route('/start_recording', methods=['POST'])
 def start_recording():
@@ -142,7 +142,7 @@ def stop_recording():
     with data_lock:
         is_recording = False
         record_end_time = time.time()
-        
+
         # Save trace data to a file
         recording_duration = record_end_time - record_start_time
         local_timezone = pytz.timezone('Europe/Paris')  # Set your desired timezone here
@@ -154,13 +154,13 @@ def stop_recording():
             "duration": recording_duration,
             "traces": trace_data
         }
-        
+
         with open(trace_file_name_csv, 'w', newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
-            csv_writer.writerow(['Timestamp', 'Latitude', 'Longitude', 'Speed', 'Elevation'])
+            csv_writer.writerow(['Timestamp', 'Device', 'Latitude', 'Longitude', 'Speed', 'Elevation'])
             for trace in trace_data:
                 csv_writer.writerow(trace)
-        
+
         print(f"Trace data saved to {trace_file_name_csv}")
 
     return "Recording stopped", 200
@@ -170,11 +170,12 @@ def list_traces():
     trace_files = glob.glob("uploads/trace_*.csv")  # List all CSV files in uploads folder
     trace_files.sort()  # Optional: Sort the list if needed
     return jsonify(trace_files)
-    
+
 @app.route('/get_trace/<trace_file>')
 def get_trace(trace_file):
     trace_path = os.path.join('uploads', trace_file)
-    traces = []
+    traces1 = []
+    traces2 = []
     total_distance = 0.0
     duration = 0.0
     start_time = None
@@ -185,55 +186,72 @@ def get_trace(trace_file):
             reader = csv.reader(csvfile)
             header = next(reader)  # Read the header row
             has_timestamp = 'Timestamp' in header
-            previous_point = None
+            previous_point1 = None
+            previous_point2 = None
             for row in reader:
                 if has_timestamp:
-                    timestamp, latitude, longitude, speed, elevation = row
+                    timestamp, device, latitude, longitude, speed, elevation = row
                     timestamp = float(timestamp)
+                    device = int(device)
                     latitude, longitude = float(latitude), float(longitude)
                     if not start_time:
                         start_time = timestamp
                     end_time = timestamp
                 else:
-                    latitude, longitude = float(row[0]), float(row[1])
-                traces.append([latitude, longitude])
-                if previous_point:
-                    total_distance += haversine(previous_point[0], previous_point[1], latitude, longitude)
-                previous_point = (latitude, longitude)
+                    device = int(row[0])
+                    latitude, longitude = float(row[1]), float(row[2])
+                
+                if device == 1:
+                    traces1.append([latitude, longitude])
+                    if previous_point1:
+                        total_distance += haversine(previous_point1[0], previous_point1[1], latitude, longitude)
+                    previous_point1 = (latitude, longitude)
+                elif device == 2:
+                    traces2.append([latitude, longitude])
+                    if previous_point2:
+                        total_distance += haversine(previous_point2[0], previous_point2[1], latitude, longitude)
+                    previous_point2 = (latitude, longitude)
 
-        if has_timestamp:
-            duration = end_time - start_time if start_time and end_time else 0.0
+        if start_time and end_time:
+            duration = end_time - start_time
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        trace_data = {
+            'traces1': traces1,
+            'traces2': traces2,
+            'duration': duration,
+            'distance': total_distance
+        }
 
-    return jsonify({"traces": traces, "duration": duration, "distance": total_distance})
+        return jsonify(trace_data)
+
+    except FileNotFoundError:
+        return jsonify({"error": "Trace file not found"}), 404
 
 @app.route('/upload_trace', methods=['POST'])
 def upload_trace():
-    if 'file' not in request.files:
-        return "No file part", 400
     file = request.files['file']
-    if file.filename == '':
-        return "No selected file", 400
     if file:
-        # Ensure the uploads directory exists
-        if not os.path.exists('uploads'):
-            os.makedirs('uploads')
-        
-        file_path = os.path.join("uploads", file.filename)
+        file_path = os.path.join('uploads', file.filename)
         file.save(file_path)
-        
-        # Read CSV file
-        traces = []
-        with open(file_path, 'r') as csv_file:
-            csv_reader = csv.reader(csv_file)
-            next(csv_reader)  # Skip header
-            for row in csv_reader:
-                latitude, longitude = float(row[0]), float(row[1])
-                traces.append((latitude, longitude))
-        
-        return jsonify(traces=traces), 200
+        return jsonify({"status": "success", "filename": file.filename}), 200
+    return jsonify({"status": "error", "message": "No file uploaded"}), 400
+
+@app.route('/stop_all_gps', methods=['POST'])
+def stop_all_gps():
+    global gps_stop_events
+    global latest_data
+
+    # Stop all GPS threads
+    for event in gps_stop_events:
+        event.set()
+
+    # Clear latest_data to stop updates
+    with data_lock:
+        latest_data["gps1"] = {"latitude": None, "longitude": None, "speed": None, "elevation": None}
+        latest_data["gps2"] = {"latitude": None, "longitude": None, "speed": None, "elevation": None}
+
+    return "Stopping all GPS connections and updates", 200
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
