@@ -325,6 +325,13 @@
                 alert('Please select a file first.');
                 return;
             }
+
+            // Ask for confirmation
+            const confirmed = window.confirm(`Are you sure you want to delete ${selectedTraceFile}?`);
+            if (!confirmed) {
+                return;
+            }
+
             const response = await fetch(`/delete_trace/${selectedTraceFile}`, { method: 'DELETE' });
             if (response.ok) {
                 alert('Trace file deleted successfully.');
@@ -336,6 +343,7 @@
                 alert('Failed to delete trace file.');
             }
         }
+
 
 
         async function connectToGPS(deviceNum) {
