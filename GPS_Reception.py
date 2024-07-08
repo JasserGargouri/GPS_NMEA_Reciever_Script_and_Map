@@ -261,6 +261,17 @@ def stop_all_gps():
 
     return "Stopping all GPS connections and updates", 200
 
+@app.route('/delete_trace/<trace_file>', methods=['DELETE'])
+def delete_trace(trace_file):
+    trace_path = os.path.join('uploads', trace_file)
+    try:
+        if os.path.exists(trace_path):
+            os.remove(trace_path)
+            return jsonify({"status": "success", "message": "File deleted"}), 200
+        else:
+            return jsonify({"status": "error", "message": "File not found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
