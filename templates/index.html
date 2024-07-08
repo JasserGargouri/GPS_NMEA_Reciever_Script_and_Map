@@ -92,7 +92,7 @@
             background-color: #c0c0c0;
             font-weight: bold;
         }
-	img.huechange { filter: hue-rotate(120deg); }
+	    img.huechange { filter: hue-rotate(120deg); }
     </style>
 </head>
 <body>
@@ -186,14 +186,6 @@
                 device2Path = [];
                 tracePolyline2.setLatLngs(device2Path);
                 document.getElementById('gps2Status').style.color = 'red'; // Disconnected indicator
-            }
-
-            // Fit map bounds to both traces
-            if (traces1.length > 0 || traces2.length > 0) {
-                const bounds1 = tracePolyline1.getBounds();
-                const bounds2 = tracePolyline2.getBounds();
-                const combinedBounds = bounds1.extend(bounds2); // Combine bounds
-                map.fitBounds(combinedBounds);
             }
 
             if (!data.gps1.latitude && !data.gps2.latitude) {
