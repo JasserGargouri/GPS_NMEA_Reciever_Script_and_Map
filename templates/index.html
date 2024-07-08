@@ -92,6 +92,7 @@
             background-color: #c0c0c0;
             font-weight: bold;
         }
+	img.huechange { filter: hue-rotate(120deg); }
     </style>
 </head>
 <body>
@@ -135,13 +136,14 @@
         }).addTo(map);
         let marker1 = L.marker([0, 0]).addTo(map);
         let marker2 = L.marker([0, 0], {color: 'red'}).addTo(map);
+	    marker2._icon.classList.add("huechange");
         let tracePolyline1 = L.polyline([], {color: 'blue'}).addTo(map);
         let tracePolyline2 = L.polyline([], {color: 'red'}).addTo(map);
         let timerInterval = null;
         let timeElapsed = 0;
         let device1Path = [];
         let device2Path = [];
-        let mapUpdateEnabled = true;  // Flag to control real-time map updates
+        let mapUpdateEnabled = false;  // Flag to control real-time map updates
         let selectedTraceFile = null;
 
         async function updateMap() {
@@ -158,6 +160,10 @@
                 device1Path.push(latLng1);
                 tracePolyline1.setLatLngs(device1Path);
                 document.getElementById('gps1Status').style.color = 'green'; // Connected indicator
+                const bounds1 = tracePolyline1.getBounds();
+                const bounds2 = tracePolyline2.getBounds();
+                const combinedBounds = bounds1.extend(bounds2); // Combine bounds
+                map.fitBounds(combinedBounds);
             } else {
                 marker1.setLatLng([0, 0]);
                 device1Path = [];
@@ -171,11 +177,23 @@
                 device2Path.push(latLng2);
                 tracePolyline2.setLatLngs(device2Path);
                 document.getElementById('gps2Status').style.color = 'green'; // Connected indicator
+                const bounds1 = tracePolyline1.getBounds();
+                const bounds2 = tracePolyline2.getBounds();
+                const combinedBounds = bounds1.extend(bounds2); // Combine bounds
+                map.fitBounds(combinedBounds);
             } else {
                 marker2.setLatLng([0, 0]);
                 device2Path = [];
                 tracePolyline2.setLatLngs(device2Path);
                 document.getElementById('gps2Status').style.color = 'red'; // Disconnected indicator
+            }
+
+            // Fit map bounds to both traces
+            if (traces1.length > 0 || traces2.length > 0) {
+                const bounds1 = tracePolyline1.getBounds();
+                const bounds2 = tracePolyline2.getBounds();
+                const combinedBounds = bounds1.extend(bounds2); // Combine bounds
+                map.fitBounds(combinedBounds);
             }
 
             if (!data.gps1.latitude && !data.gps2.latitude) {
@@ -204,6 +222,7 @@
         }
 
         async function startRecording() {
+            let mapUpdateEnabled = true;
             await fetch('/start_recording', { method: 'POST' });
             console.log("Started recording");
             startTimer();
