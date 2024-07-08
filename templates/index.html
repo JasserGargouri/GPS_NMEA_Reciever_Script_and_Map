@@ -236,8 +236,13 @@
             }
             tracePolyline1 = L.polyline(traces1, { color: 'blue' }).addTo(map);
             tracePolyline2 = L.polyline(traces2, { color: 'red' }).addTo(map);
+
+            // Fit map bounds to both traces
             if (traces1.length > 0 || traces2.length > 0) {
-                map.fitBounds([...tracePolyline1.getBounds().toArray(), ...tracePolyline2.getBounds().toArray()]);
+                const bounds1 = tracePolyline1.getBounds();
+                const bounds2 = tracePolyline2.getBounds();
+                const combinedBounds = bounds1.extend(bounds2); // Combine bounds
+                map.fitBounds(combinedBounds);
             }
         }
 
@@ -279,14 +284,14 @@
             tracePolyline2.setLatLngs(traces2);
 
             // Fit map bounds to both traces
-            const bounds1 = tracePolyline1.getBounds();
-            const bounds2 = tracePolyline2.getBounds();
-            const combinedBounds = bounds1.extend(bounds2).getCenter(); // Get center of bounds
-
-            if (combinedBounds.length > 0) {
+            if (traces1.length > 0 || traces2.length > 0) {
+                const bounds1 = tracePolyline1.getBounds();
+                const bounds2 = tracePolyline2.getBounds();
+                const combinedBounds = bounds1.extend(bounds2); // Combine bounds
                 map.fitBounds(combinedBounds);
             }
         }
+
 
 
 

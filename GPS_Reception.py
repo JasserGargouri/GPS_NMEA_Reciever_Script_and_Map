@@ -185,22 +185,31 @@ def get_trace(trace_file):
         with open(trace_path, 'r') as csvfile:
             reader = csv.reader(csvfile)
             header = next(reader)  # Read the header row
+
+            # Determine which columns are present
             has_timestamp = 'Timestamp' in header
+            has_device = 'Device' in header
+
             previous_point1 = None
             previous_point2 = None
+
             for row in reader:
                 if has_timestamp:
-                    timestamp, device, latitude, longitude, speed, elevation = row
-                    timestamp = float(timestamp)
-                    device = int(device)
-                    latitude, longitude = float(latitude), float(longitude)
+                    timestamp = float(row[header.index('Timestamp')])
+                    latitude = float(row[header.index('Latitude')])
+                    longitude = float(row[header.index('Longitude')])
                     if not start_time:
                         start_time = timestamp
                     end_time = timestamp
                 else:
-                    device = int(row[0])
-                    latitude, longitude = float(row[1]), float(row[2])
-                
+                    latitude = float(row[header.index('Latitude')])
+                    longitude = float(row[header.index('Longitude')])
+
+                if has_device:
+                    device = int(row[header.index('Device')])
+                else:
+                    device = 1  # Default to device 1 if device column is not present
+
                 if device == 1:
                     traces1.append([latitude, longitude])
                     if previous_point1:
